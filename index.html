@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatório Financeiro Familiar</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel para JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Recharts (Gráficos) -->
+    <script src="https://unpkg.com/recharts/umd/Recharts.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Tailwind Config -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#0f172a',
+                        secondary: '#334155',
+                        accent: '#3b82f6',
+                        danger: '#ef4444',
+                        success: '#10b981'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #f1f5f9; }
+        .card { @apply bg-white rounded-xl shadow-sm border border-slate-200 p-6; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+        const { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = Recharts;
+
+        // ----------------------------------------------------
+        // COMPONENTES DE UI
+        // ----------------------------------------------------
+
+        const StatCard = ({ title, value, subtext, icon, trend }) => (
+            <div className="card hover:shadow-md transition-shadow">
+                <div className="flex justify-between items-start mb-4">
+                    <div>
+                        <p className="text-slate-500 text-sm font-medium uppercase tracking-wider">{title}</p>
+                        <h3 className="text-2xl font-bold text-slate-800 mt-1">{value}</h3>
+                    </div>
+                    <div className="p-2 bg-slate-100 rounded-lg text-slate-600">
+                        {icon}
+                    </div>
+                </div>
+                {subtext && (
+                    <div className="flex items-center text-sm">
+                        <span className={`font-medium ${trend === 'up' ? 'text-danger' : 'text-success'}`}>
+                            {subtext}
+                        </span>
+                    </div>
+                )}
+            </div>
+        );
+
+        const LoadingState = () => (
+            <div className="flex flex-col items-center justify-center min-h-screen text-slate-500">
+                <i data-lucide="loader-2" className="w-10 h-10 animate-spin mb-4 text-accent"></i>
+                <p>Carregando dados financeiros...</p>
+            </div>
+        );
+
+        // ----------------------------------------------------
+        // APLICAÇÃO PRINCIPAL
+        // ----------------------------------------------------
+
+        const App = () => {
+            const [data, setData] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+            const [apiUrl, setApiUrl] = useState(localStorage.getItem('finance_api_url') || '');
+            const [configMode, setConfigMode] = useState(!localStorage.getItem('finance_api_url'));
+
+            // Dados Mockados para Demonstração caso não tenha API
+            const mockData = [
+                { ano: 2025, mesId: 8, mesNome: 'Ago', categoriaMacro: 'Contas Fixas', categoriaMicro: 'Aluguel', valor: 1500, dataPagamento: '05/08/2025', linkComprovante: '#', observacao: '' },
+                { ano: 2025, mesId: 8, mesNome: 'Ago', categoriaMacro: 'Alimentação', categoriaMicro: 'Mercado', valor: 800, dataPagamento: '10/08/2025', linkComprovante: '#', observacao: '' },
+                { ano: 2025, mesId: 9, mesNome: 'Set', categoriaMacro: 'Contas Fixas', categoriaMicro: 'Aluguel', valor: 1500, dataPagamento: '05/09/2025', linkComprovante: '#', observacao: '' },
+                { ano: 2025, mesId: 9, mesNome: 'Set', categoriaMacro: 'Saúde', categoriaMicro: 'Remédios', valor: 250, dataPagamento: '12/09/2025', linkComprovante: '#', observacao: '' },
+                { ano: 2025, mesId: 10, mesNome: 'Out', categoriaMacro: 'Contas Fixas', categoriaMicro: 'Internet', valor: 120, dataPagamento: '15/10/2025', linkComprovante: '#', observacao: '' },
+                { ano: 2025, mesId: 10, mesNome: 'Out', categoriaMacro: 'Lazer', categoriaMicro: 'Restaurante', valor: 400, dataPagamento: '20/10/2025', linkComprovante: '#', observacao: 'Aniversário' },
+            ];
+
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            }, [loading, configMode]);
+
+            // Busca os dados
+            const fetchData = async () => {
+                if (!apiUrl) return;
+                setLoading(true);
+                try {
+                    const response = await fetch(apiUrl);
+                    const json = await response.json();
+                    if (json.status === 'sucesso') {
+                        setData(json.data);
+                        setError(null);
+                    } else {
+                        throw new Error("Erro na estrutura dos dados");
+                    }
+                } catch (err) {
+                    console.error(err);
+                    setError("Falha ao carregar dados. Usando dados de demonstração.");
+                    setData(mockData); // Fallback para demo
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            useEffect(() => {
+                if (apiUrl) fetchData();
+            }, [apiUrl]);
+
+            const handleSaveUrl = (e) => {
+                e.preventDefault();
+                const url = e.target.url.value;
+                localStorage.setItem('finance_api_url', url);
+                setApiUrl(url);
+                setConfigMode(false);
+            };
+
+            // ----------------------------------------------------
+            // LÓGICA DE CÁLCULO
+            // ----------------------------------------------------
+
+            const metrics = useMemo(() => {
+                if (!data.length) return null;
+
+                // Ordenar dados cronologicamente
+                const sortedData = [...data].sort((a, b) => {
+                    if (a.ano !== b.ano) return a.ano - b.ano;
+                    return a.mesId - b.mesId;
+                });
+
+                // Identificar mês atual (último mês com dados)
+                const lastEntry = sortedData[sortedData.length - 1];
+                const currentMonthId = lastEntry.mesId;
+                const currentMonthName = lastEntry.mesNome;
+
+                // Agrupamentos
+                const byMonth = {};
+                const byCategoryCurrentMonth = {};
+                let totalCurrentMonth = 0;
+                let totalLastMonth = 0;
+
+                sortedData.forEach(item => {
+                    // Evolução Mensal
+                    const monthKey = `${item.mesNome}/${item.ano}`;
+                    if (!byMonth[monthKey]) byMonth[monthKey] = 0;
+                    byMonth[monthKey] += item.valor;
+
+                    // Mês Atual
+                    if (item.mesId === currentMonthId) {
+                        totalCurrentMonth += item.valor;
+                        if (!byCategoryCurrentMonth[item.categoriaMacro]) byCategoryCurrentMonth[item.categoriaMacro] = 0;
+                        byCategoryCurrentMonth[item.categoriaMacro] += item.valor;
+                    }
+
+                    // Mês Anterior (simples, assumindo ID-1)
+                    if (item.mesId === currentMonthId - 1) {
+                        totalLastMonth += item.valor;
+                    }
+                });
+
+                // Dados para Gráfico de Barras (Evolução)
+                const chartDataEvolution = Object.keys(byMonth).map(key => ({
+                    name: key,
+                    total: byMonth[key]
+                }));
+
+                // Dados para Gráfico de Pizza (Categorias)
+                const chartDataCategory = Object.keys(byCategoryCurrentMonth).map(key => ({
+                    name: key,
+                    value: byCategoryCurrentMonth[key]
+                })).sort((a,b) => b.value - a.value);
+
+                // Projeção (Média dos últimos 3 meses)
+                const monthValues = Object.values(byMonth);
+                const avgSpending = monthValues.reduce((a, b) => a + b, 0) / monthValues.length;
+                
+                // Formatação BRL
+                const toBRL = (val) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+                return {
+                    currentMonthName,
+                    totalCurrentMonth: toBRL(totalCurrentMonth),
+                    totalLastMonth: toBRL(totalLastMonth),
+                    projection: toBRL(avgSpending),
+                    chartDataEvolution,
+                    chartDataCategory,
+                    rawCurrentMonth: sortedData.filter(i => i.mesId === currentMonthId),
+                    topCategory: chartDataCategory.length > 0 ? chartDataCategory[0].name : 'N/A'
+                };
+
+            }, [data]);
+
+            // Cores para o gráfico de pizza
+            const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+            // ----------------------------------------------------
+            // RENDERIZAÇÃO
+            // ----------------------------------------------------
+
+            if (configMode) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+                        <div className="bg-white p-8 rounded-xl shadow-lg max-w-md w-full">
+                            <div className="text-center mb-6">
+                                <i data-lucide="database" className="w-12 h-12 text-accent mx-auto mb-2"></i>
+                                <h1 className="text-2xl font-bold text-slate-800">Conectar Planilha</h1>
+                                <p className="text-slate-500 text-sm mt-2">Insira a URL do Web App do Google Apps Script para começar.</p>
+                            </div>
+                            <form onSubmit={handleSaveUrl} className="space-y-4">
+                                <input 
+                                    name="url" 
+                                    type="url" 
+                                    placeholder="https://script.google.com/macros/s/..." 
+                                    className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-accent outline-none"
+                                    required
+                                />
+                                <button type="submit" className="w-full bg-primary text-white py-3 rounded-lg font-bold hover:bg-slate-800 transition">
+                                    Acessar Relatório
+                                </button>
+                                <button type="button" onClick={() => setConfigMode(false)} className="w-full text-sm text-slate-500 hover:text-slate-800 underline">
+                                    Ver Demonstração (Sem dados reais)
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (loading) return <LoadingState />;
+
+            return (
+                <div className="min-h-screen pb-12">
+                    {/* Header */}
+                    <header className="bg-primary text-white pb-20 pt-8 px-4 md:px-8">
+                        <div className="max-w-7xl mx-auto flex justify-between items-center">
+                            <div>
+                                <h1 className="text-2xl md:text-3xl font-bold">Relatório Financeiro</h1>
+                                <p className="text-slate-400 mt-1">Visão geral dos gastos familiares</p>
+                            </div>
+                            <button onClick={() => setConfigMode(true)} className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition" title="Configurar API">
+                                <i data-lucide="settings" className="w-5 h-5"></i>
+                            </button>
+                        </div>
+                    </header>
+
+                    <main className="max-w-7xl mx-auto px-4 md:px-8 -mt-12 space-y-8">
+                        
+                        {/* KPI Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <StatCard 
+                                title={`Gasto Total (${metrics?.currentMonthName || 'Atual'})`} 
+                                value={metrics?.totalCurrentMonth} 
+                                icon={<i data-lucide="wallet" className="w-6 h-6"></i>}
+                                subtext="Mês de referência"
+                            />
+                            <StatCard 
+                                title="Mês Anterior" 
+                                value={metrics?.totalLastMonth} 
+                                icon={<i data-lucide="calendar-clock" className="w-6 h-6"></i>}
+                            />
+                            <StatCard 
+                                title="Projeção Média" 
+                                value={metrics?.projection} 
+                                icon={<i data-lucide="trending-up" className="w-6 h-6"></i>}
+                                subtext="Baseado no histórico"
+                            />
+                            <StatCard 
+                                title="Maior Gasto (Cat.)" 
+                                value={metrics?.topCategory} 
+                                icon={<i data-lucide="alert-circle" className="w-6 h-6"></i>}
+                                subtext="No mês atual"
+                                trend="up"
+                            />
+                        </div>
+
+                        {/* Charts Section */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                            {/* Evolução Mensal */}
+                            <div className="card lg:col-span-2 min-h-[400px]">
+                                <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                                    <i data-lucide="bar-chart-2" className="w-5 h-5 text-accent"></i> Evolução Mensal
+                                </h3>
+                                <div className="h-[300px] w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={metrics?.chartDataEvolution}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                            <XAxis dataKey="name" axisLine={false} tickLine={false} />
+                                            <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `R$${val}`} />
+                                            <Tooltip 
+                                                formatter={(value) => [`R$ ${value.toFixed(2)}`, 'Total']}
+                                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                            />
+                                            <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={50} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+
+                            {/* Categorias */}
+                            <div className="card min-h-[400px]">
+                                <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                                    <i data-lucide="pie-chart" className="w-5 h-5 text-accent"></i> Por Categoria
+                                </h3>
+                                <div className="h-[300px] w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={metrics?.chartDataCategory}
+                                                cx="50%"
+                                                cy="50%"
+                                                innerRadius={60}
+                                                outerRadius={80}
+                                                paddingAngle={5}
+                                                dataKey="value"
+                                            >
+                                                {metrics?.chartDataCategory.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip formatter={(value) => `R$ ${value.toFixed(2)}`} />
+                                            <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Transaction Table */}
+                        <div className="card overflow-hidden">
+                            <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                                <i data-lucide="list" className="w-5 h-5 text-accent"></i> Detalhes do Mês ({metrics?.currentMonthName})
+                            </h3>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-sm text-slate-600">
+                                    <thead className="bg-slate-50 text-slate-700 uppercase font-medium">
+                                        <tr>
+                                            <th className="p-4 rounded-tl-lg">Data</th>
+                                            <th className="p-4">Categoria</th>
+                                            <th className="p-4">Descrição</th>
+                                            <th className="p-4">Valor</th>
+                                            <th className="p-4">Obs</th>
+                                            <th className="p-4 rounded-tr-lg text-center">Comprovante</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {metrics?.rawCurrentMonth.map((row, idx) => (
+                                            <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                                                <td className="p-4">{row.dataPagamento}</td>
+                                                <td className="p-4">
+                                                    <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-bold">
+                                                        {row.categoriaMacro}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4 font-medium text-slate-800">{row.categoriaMicro}</td>
+                                                <td className="p-4 font-bold text-slate-700">
+                                                    {row.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                                </td>
+                                                <td className="p-4 max-w-xs truncate" title={row.observacao}>{row.observacao || '-'}</td>
+                                                <td className="p-4 text-center">
+                                                    {row.linkComprovante ? (
+                                                        <a href={row.linkComprovante} target="_blank" rel="noopener noreferrer" className="text-accent hover:text-blue-700 inline-flex items-center gap-1">
+                                                            <i data-lucide="external-link" className="w-4 h-4"></i> Abrir
+                                                        </a>
+                                                    ) : (
+                                                        <span className="text-slate-300">-</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
