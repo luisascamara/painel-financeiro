@@ -3,34 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Relatório Financeiro</title>
+    <title>Relatório Financeiro Familiar</title>
     
     <!-- Tratamento de Erros Global -->
     <script>
         window.onerror = function(message, source, lineno, colno, error) {
-            document.getElementById('root').innerHTML = `
-                <div style="color: red; padding: 20px; font-family: sans-serif;">
-                    <h3>Ocorreu um erro no carregamento:</h3>
-                    <p><strong>Erro:</strong> ${message}</p>
-                    <p><strong>Linha:</strong> ${lineno}</p>
-                    <p>Verifique se sua conexão com a internet está ativa para carregar os scripts.</p>
-                </div>
-            `;
+            const root = document.getElementById('root');
+            if (root) {
+                root.innerHTML = `
+                    <div style="color: #7f1d1d; background-color: #fef2f2; padding: 20px; font-family: sans-serif; border: 1px solid #f87171; border-radius: 8px; max-width: 600px; margin: 40px auto;">
+                        <h3 style="margin-top: 0;">Erro de Carregamento</h3>
+                        <p><strong>O que aconteceu:</strong> O navegador não conseguiu carregar as ferramentas necessárias para mostrar o site.</p>
+                        <p style="font-size: 0.9em; background: rgba(255,255,255,0.5); padding: 10px; border-radius: 4px;">Erro técnico: ${message}</p>
+                        <p><strong>Como resolver:</strong></p>
+                        <ol>
+                            <li>Verifique sua conexão com a internet.</li>
+                            <li>Se estiver usando bloqueador de anúncios (AdBlock), desative-o para este site.</li>
+                            <li>Tente abrir em uma aba anônima.</li>
+                        </ol>
+                        <button onclick="window.location.reload()" style="background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold;">Tentar Novamente</button>
+                    </div>
+                `;
+            }
         };
     </script>
 
-    <!-- React & ReactDOM -->
-    <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <!-- React & ReactDOM (Via Cloudflare CDN - Mais estável) -->
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     
-    <!-- Babel para JSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Babel (Compilador) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.10/babel.min.js"></script>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Recharts (Gráficos) -->
-    <script src="https://unpkg.com/recharts@2.8.0/umd/Recharts.js"></script>
+    <!-- Recharts (Gráficos - Versão Atualizada e Estável) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.3/Recharts.min.js"></script>
     
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -58,18 +67,28 @@
 </head>
 <body>
     <div id="root">
-        <div style="display: flex; height: 100vh; align-items: center; justify-content: center; color: #64748b; font-family: sans-serif;">
-            Carregando sistema...
+        <div style="display: flex; height: 100vh; flex-direction: column; align-items: center; justify-content: center; color: #64748b; font-family: sans-serif;">
+            <div style="margin-bottom: 20px;">
+                <svg class="animate-spin" xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #3b82f6;"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+            </div>
+            <p>Iniciando sistema...</p>
         </div>
     </div>
 
     <script type="text/babel">
-        if (!window.React || !window.ReactDOM || !window.Recharts) {
-            throw new Error("Bibliotecas essenciais (React ou Recharts) não foram carregadas.");
+        // Verificação manual das dependências
+        if (!window.React || !window.ReactDOM) {
+            throw new Error("React não foi carregado. Verifique se o cdnjs.cloudflare.com está bloqueado.");
+        }
+        if (!window.Recharts) {
+            console.warn("Recharts falhou, tentando fallback ou renderizando sem gráficos.");
+            // Não bloqueia o app inteiro se só o gráfico falhar, mas avisa
         }
 
         const { useState, useEffect, useMemo } = React;
-        const { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = Recharts;
+        // Fallback seguro para componentes do Recharts caso falhem
+        const RechartsLib = window.Recharts || {};
+        const { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = RechartsLib;
 
         // --- COMPONENTES UI ---
 
@@ -104,37 +123,29 @@
         // --- APP PRINCIPAL ---
 
         const App = () => {
-            // URL DA API (HARDCODED) - Já inserida conforme solicitado
+            // URL DA API
             const FIXED_API_URL = "https://script.google.com/macros/s/AKfycbwljwdhw-IaiFjUISQEanjiSyzoTdmkA4S3dFvx0e4FbBLUTFXvUrwiMt-As1Poo0I_zw/exec";
 
             const [data, setData] = useState([]);
             const [loading, setLoading] = useState(true);
             const [error, setError] = useState(null);
             
-            // Inicializa com a URL Fixa se existir, senão procura no localStorage (backup)
-            const [apiUrl, setApiUrl] = useState(() => FIXED_API_URL || localStorage.getItem('finance_api_url') || '');
+            const [apiUrl] = useState(FIXED_API_URL);
             
-            // Só entra em modo config se NÃO tiver URL fixa e NEM URL no storage
-            const [configMode, setConfigMode] = useState(() => !FIXED_API_URL && !localStorage.getItem('finance_api_url'));
-
-            // Dados Mockados (Demo)
-            const mockData = [
-                { ano: 2025, mesId: 8, mesNome: 'Ago', categoriaMacro: 'Contas Fixas', categoriaMicro: 'Aluguel', valor: 1500, dataPagamento: '05/08/2025', linkComprovante: '#', observacao: '' },
-                { ano: 2025, mesId: 8, mesNome: 'Ago', categoriaMacro: 'Alimentação', categoriaMicro: 'Mercado', valor: 800, dataPagamento: '10/08/2025', linkComprovante: '#', observacao: '' },
-            ];
-
             useEffect(() => {
                 if (window.lucide) window.lucide.createIcons();
-            }, [loading, configMode, data]);
+            }, [loading, data]);
 
             const fetchData = async () => {
-                if (!apiUrl) {
-                    setLoading(false);
-                    return;
-                }
                 setLoading(true);
                 try {
                     const response = await fetch(`${apiUrl}?t=${new Date().getTime()}`);
+                    
+                    const contentType = response.headers.get("content-type");
+                    if (contentType && contentType.indexOf("application/json") === -1) {
+                        throw new Error("Erro de Permissão: A resposta não é JSON. Verifique se o script está como 'Qualquer pessoa'.");
+                    }
+
                     const json = await response.json();
                     
                     if (json.status === 'sucesso') {
@@ -147,7 +158,11 @@
                     }
                 } catch (err) {
                     console.error(err);
-                    setError(err.message || "Falha ao carregar dados.");
+                    let msg = err.message || "Falha ao carregar dados.";
+                    if (msg.includes("Unexpected token") || msg.includes("JSON") || msg.includes("Permissão")) {
+                        msg = "Erro de Acesso: O Google bloqueou a leitura. Verifique as permissões de implantação no Apps Script.";
+                    }
+                    setError(msg);
                 } finally {
                     setLoading(false);
                 }
@@ -155,17 +170,7 @@
 
             useEffect(() => {
                 fetchData();
-            }, [apiUrl]);
-
-            const handleSaveUrl = (e) => {
-                e.preventDefault();
-                const url = e.target.url.value;
-                if(url) {
-                    localStorage.setItem('finance_api_url', url);
-                    setApiUrl(url);
-                    setConfigMode(false);
-                }
-            };
+            }, []);
 
             const metrics = useMemo(() => {
                 if (!data || data.length === 0) return null;
@@ -230,34 +235,6 @@
 
             const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
-            // --- RENDERIZAÇÃO ---
-
-            if (configMode) {
-                return (
-                    <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-                        <div className="bg-white p-8 rounded-xl shadow-lg max-w-md w-full">
-                            <div className="text-center mb-6">
-                                <i data-lucide="database" className="w-12 h-12 text-accent mx-auto mb-2"></i>
-                                <h1 className="text-2xl font-bold text-slate-800">Conectar Planilha</h1>
-                            </div>
-                            <form onSubmit={handleSaveUrl} className="space-y-4">
-                                <input 
-                                    name="url" 
-                                    type="url" 
-                                    placeholder="https://script.google.com/..." 
-                                    className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-accent outline-none"
-                                    required
-                                    defaultValue={apiUrl}
-                                />
-                                <button type="submit" className="w-full bg-primary text-white py-3 rounded-lg font-bold hover:bg-slate-800 transition">
-                                    Salvar URL
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                );
-            }
-
             if (loading) return <LoadingState />;
 
             if (error) {
@@ -312,15 +289,17 @@
                                     <i data-lucide="bar-chart-2" className="w-5 h-5 text-accent"></i> Evolução Mensal
                                 </h3>
                                 <div className="h-[300px] w-full">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={metrics.chartDataEvolution}>
-                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                                            <XAxis dataKey="name" axisLine={false} tickLine={false} />
-                                            <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `R$${val}`} />
-                                            <Tooltip formatter={(value) => [`R$ ${value.toFixed(2)}`, 'Total']} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                                            <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={50} />
-                                        </BarChart>
-                                    </ResponsiveContainer>
+                                    {window.Recharts ? (
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={metrics.chartDataEvolution}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                                <XAxis dataKey="name" axisLine={false} tickLine={false} />
+                                                <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `R$${val}`} />
+                                                <Tooltip formatter={(value) => [`R$ ${value.toFixed(2)}`, 'Total']} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                                <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={50} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    ) : <p className="text-red-500">Erro ao carregar gráficos</p>}
                                 </div>
                             </div>
 
@@ -329,17 +308,19 @@
                                     <i data-lucide="pie-chart" className="w-5 h-5 text-accent"></i> Por Categoria
                                 </h3>
                                 <div className="h-[300px] w-full">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <PieChart>
-                                            <Pie data={metrics.chartDataCategory} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                                                {metrics.chartDataCategory.map((entry, index) => (
-                                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                                ))}
-                                            </Pie>
-                                            <Tooltip formatter={(value) => `R$ ${value.toFixed(2)}`} />
-                                            <Legend verticalAlign="bottom" height={36} iconType="circle" />
-                                        </PieChart>
-                                    </ResponsiveContainer>
+                                    {window.Recharts ? (
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <PieChart>
+                                                <Pie data={metrics.chartDataCategory} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                                                    {metrics.chartDataCategory.map((entry, index) => (
+                                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                    ))}
+                                                </Pie>
+                                                <Tooltip formatter={(value) => `R$ ${value.toFixed(2)}`} />
+                                                <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    ) : <p className="text-red-500">Erro ao carregar gráficos</p>}
                                 </div>
                             </div>
                         </div>
