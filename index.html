@@ -204,6 +204,7 @@
                         if (cat.includes("família") || cat.includes("familia")) {
                             evolMap[sortKey].entradaFamilia += d.valor;
                         } else {
+                            // Qualquer entrada que não for "Família" vai para a conta da Mãe (Lucinda)
                             evolMap[sortKey].entradaMae += d.valor;
                         }
                     }
@@ -214,7 +215,7 @@
                     labels: evolArray.map(i => i.name),
                     datasets: [
                         {
-                            label: 'Entrada (Mãe)',
+                            label: 'Entrada (Lucinda)', // Alterado de Mãe para Lucinda conforme solicitado
                             data: evolArray.map(i => i.entradaMae),
                             backgroundColor: '#10b981', // Verde Escuro
                             stack: 'stack0',
