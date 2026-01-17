@@ -38,7 +38,8 @@
                         secondary: '#334155',
                         accent: '#2563eb',
                         danger: '#ef4444',
-                        success: '#10b981'
+                        success: '#10b981',
+                        warning: '#f59e0b'
                     }
                 }
             }
@@ -87,13 +88,24 @@
                 <div className="flex justify-between items-start mb-4">
                     <div>
                         <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">{title}</p>
-                        <h3 className={`text-2xl font-bold mt-1 ${type === 'danger' ? 'text-red-600' : type === 'success' ? 'text-green-600' : 'text-slate-800'}`}>{value}</h3>
+                        <h3 className={`text-2xl font-bold mt-1 ${type === 'danger' ? 'text-red-600' : type === 'success' ? 'text-green-600' : type === 'warning' ? 'text-yellow-600' : 'text-slate-800'}`}>{value}</h3>
                     </div>
                     <div className="p-2 bg-slate-100 rounded-lg text-slate-600">{icon}</div>
                 </div>
                 {subtext && <div className="flex items-center text-sm text-slate-500 font-medium">{subtext}</div>}
             </div>
         );
+
+        const StatusBadge = ({ status }) => {
+            const normalized = (status || "").toLowerCase().trim();
+            const isPago = normalized === "pago";
+            return (
+                <span className={`px-2 py-1 rounded text-xs font-bold border inline-flex items-center gap-1 ${isPago ? 'bg-green-100 text-green-700 border-green-200' : 'bg-yellow-100 text-yellow-700 border-yellow-200'}`}>
+                    {isPago ? <i data-lucide="check-circle-2" className="w-3 h-3"></i> : <i data-lucide="clock" className="w-3 h-3"></i>}
+                    {status || "Pendente"}
+                </span>
+            );
+        };
 
         const LoadingState = () => (
             <div className="flex flex-col items-center justify-center min-h-screen text-slate-500">
@@ -113,8 +125,6 @@
             const [selectedTypeFilter, setSelectedTypeFilter] = useState("all"); 
             const [apiUrl] = useState(FIXED_API_URL);
             
-            // CORREÇÃO AQUI: Adicionei selectedTypeFilter e selectedMonthKey nas dependências
-            // Isso garante que os ícones sejam recarregados quando você muda o filtro
             useEffect(() => { 
                 if (window.lucide) window.lucide.createIcons(); 
             }, [loading, data, selectedMonthKey, selectedTypeFilter]);
@@ -162,22 +172,22 @@
                 
                 // Dados do Mês
                 const currentMonthData = data.filter(d => d.ano === selAno && d.mesId === selMesId);
-                
-                // Mês Anterior
-                let prevMesId = selMesId - 1, prevAno = selAno;
-                if (prevMesId === 0) { prevMesId = 12; prevAno = selAno - 1; }
-                const prevMonthData = data.filter(d => d.ano === prevAno && d.mesId === prevMesId);
 
                 // 3. Totais (Separando Entrada vs Saída)
                 const isSaida = (d) => d.tipo && d.tipo.toLowerCase().includes('saída');
                 const isEntrada = (d) => d.tipo && d.tipo.toLowerCase().includes('entrada');
+                const isPago = (d) => d.status && d.status.toLowerCase().trim() === 'pago';
 
-                const totalSaidasCurrent = currentMonthData.filter(isSaida).reduce((acc, cur) => acc + cur.valor, 0);
-                const totalSaidasPrev = prevMonthData.filter(isSaida).reduce((acc, cur) => acc + cur.valor, 0);
+                // Cálculo para o "Saldo em Caixa" (Entradas - Saídas PAGAS)
                 const totalEntradasCurrent = currentMonthData.filter(isEntrada).reduce((acc, cur) => acc + cur.valor, 0);
+                const totalSaidasPagas = currentMonthData.filter(d => isSaida(d) && isPago(d)).reduce((acc, cur) => acc + cur.valor, 0);
+                const saldoCaixa = totalEntradasCurrent - totalSaidasPagas;
+
+                // Total de Saídas (Geral, incluindo pendentes, para os outros cards)
+                const totalSaidasGeral = currentMonthData.filter(isSaida).reduce((acc, cur) => acc + cur.valor, 0);
                 
-                // Balanço
-                const balance = totalEntradasCurrent - totalSaidasCurrent;
+                // Balanço Geral (Entradas - Saídas Totais)
+                const balance = totalEntradasCurrent - totalSaidasGeral;
 
                 // 4. Gráfico de Categorias (Saídas do Mês)
                 const catMap = {};
@@ -190,12 +200,12 @@
                     labels: sortedCats.map(c => c[0]),
                     datasets: [{
                         data: sortedCats.map(c => c[1]),
-                        backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899'], // Cores variadas para categorias
+                        backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899'],
                         borderWidth: 0
                     }]
                 };
 
-                // 5. Gráfico de Evolução e Comparativo (Entradas Empilhadas vs Saídas)
+                // 5. Gráfico de Evolução
                 const evolMap = {};
                 data.forEach(d => {
                     const sortKey = d.ano * 100 + d.mesId; 
@@ -208,6 +218,7 @@
                         if (cat.includes("família") || cat.includes("familia")) {
                             evolMap[sortKey].entradaFamilia += d.valor;
                         } else {
+                            // Mudança de Nome: Mãe -> Lucinda
                             evolMap[sortKey].entradaMae += d.valor;
                         }
                     }
@@ -218,21 +229,21 @@
                     labels: evolArray.map(i => i.name),
                     datasets: [
                         {
-                            label: 'Entrada (Lucinda)', 
+                            label: 'Entrada (Lucinda)', // Alterado para Lucinda
                             data: evolArray.map(i => i.entradaMae),
-                            backgroundColor: '#10b981', // Verde Escuro
+                            backgroundColor: '#10b981', 
                             stack: 'stack0',
                         },
                         {
                             label: 'Entrada (Família)',
                             data: evolArray.map(i => i.entradaFamilia),
-                            backgroundColor: '#34d399', // Verde Claro
+                            backgroundColor: '#34d399', 
                             stack: 'stack0',
                         },
                         {
                             label: 'Saídas Totais',
                             data: evolArray.map(i => i.saida),
-                            backgroundColor: '#ef4444', // Vermelho
+                            backgroundColor: '#ef4444', 
                             stack: 'stack1',
                         }
                     ]
@@ -240,7 +251,7 @@
 
                 const toBRL = (val) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-                // 6. Dados da Tabela (Com filtro)
+                // 6. Dados da Tabela
                 let filteredTableData = currentMonthData;
                 if (selectedTypeFilter !== 'all') {
                     filteredTableData = currentMonthData.filter(d => {
@@ -253,8 +264,8 @@
                 return {
                     availableMonths,
                     currentMonthLabel: availableMonths.find(m => m.key === currentKey)?.label || '-',
-                    totalSaidasCurrent: toBRL(totalSaidasCurrent),
-                    totalSaidasPrev: toBRL(totalSaidasPrev),
+                    totalSaidasCurrent: toBRL(totalSaidasGeral),
+                    saldoCaixa: toBRL(saldoCaixa),
                     totalEntradasCurrent: toBRL(totalEntradasCurrent),
                     balance: toBRL(balance),
                     isPositive: balance >= 0,
@@ -297,7 +308,7 @@
                                         <i data-lucide="layout-dashboard" className="w-6 h-6"></i>
                                         Relatório Financeiro
                                     </h1>
-                                    <p className="text-blue-100 text-sm opacity-90">Visão geral da conta</p>
+                                    <p className="text-blue-100 text-sm opacity-90">Visão geral da conta de Lucinda</p>
                                 </div>
                                 <div className="w-full md:w-auto relative">
                                     <select 
@@ -327,27 +338,28 @@
                                 title="Entradas (Total)" 
                                 value={analysis.totalEntradasCurrent} 
                                 icon={<i data-lucide="trending-up" className="w-6 h-6 text-green-500"></i>}
-                                subtext="Lucinda + Família"
+                                subtext="Soma de Lucinda + Família"
                                 type="success"
                             />
                             <StatCard 
-                                title="Saldo do Mês" 
+                                title="Saldo Geral" 
                                 value={analysis.balance} 
                                 icon={<i data-lucide="scale" className="w-6 h-6"></i>}
-                                subtext="Entradas - Saídas"
+                                subtext="Entradas - Todas Saídas"
                                 type={analysis.isPositive ? 'success' : 'danger'}
                             />
+                            <!-- NOVO CARD: Saldo em Caixa (Substituindo o antigo) -->
                             <StatCard 
-                                title="Saídas (Mês Anterior)" 
-                                value={analysis.totalSaidasPrev} 
-                                icon={<i data-lucide="history" className="w-6 h-6"></i>}
-                                subtext="Para comparação"
+                                title="Saldo em Caixa" 
+                                value={analysis.saldoCaixa} 
+                                icon={<i data-lucide="wallet" className="w-6 h-6"></i>}
+                                subtext="Entradas - Saídas Pagas"
+                                type="warning"
                             />
                         </div>
 
                         {/* Gráficos */}
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                            {/* Gráfico de Evolução */}
                             <div className="card h-[450px] flex flex-col lg:col-span-2">
                                 <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
                                     <i data-lucide="bar-chart-2" className="w-5 h-5 text-accent"></i> 
@@ -386,7 +398,6 @@
                                 </p>
                             </div>
                             
-                            {/* Gráfico de Categorias */}
                             <div className="card h-[450px] flex flex-col">
                                 <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
                                     <i data-lucide="pie-chart" className="w-5 h-5 text-accent"></i> 
@@ -419,7 +430,7 @@
                             </div>
                         </div>
 
-                        {/* Tabela de Detalhes (Com Filtro) */}
+                        {/* Tabela de Detalhes */}
                         <div className="card overflow-hidden">
                             <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
                                 <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -449,7 +460,7 @@
                                             <th className="p-4 border-b">Categoria</th>
                                             <th className="p-4 border-b">Descrição</th>
                                             <th className="p-4 border-b text-right">Valor</th>
-                                            <th className="p-4 border-b text-center">Pago em</th>
+                                            <th className="p-4 border-b text-center">Status</th> <!-- Coluna Trocada -->
                                             <th className="p-4 border-b text-center">Comp.</th>
                                         </tr>
                                     </thead>
@@ -470,7 +481,9 @@
                                                         <td className={`p-4 text-right font-bold ${isEntrada ? 'text-green-600' : 'text-red-600'}`}>
                                                             {row.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                                                         </td>
-                                                        <td className="p-4 text-center text-slate-500">{row.dataPagamento || '-'}</td>
+                                                        <td className="p-4 text-center">
+                                                            <StatusBadge status={row.status} />
+                                                        </td>
                                                         <td className="p-4 text-center">
                                                             {row.linkComprovante ? (
                                                                 <a href={row.linkComprovante} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
