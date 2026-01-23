@@ -50,6 +50,10 @@
         .card { @apply bg-white rounded-xl shadow-sm border border-slate-200 p-6; }
         select { background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e"); background-position: right 0.5rem center; background-repeat: no-repeat; background-size: 1.5em 1.5em; padding-right: 2.5rem; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .select-light { background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e"); }
+        /* Estilo para tabelas compactas de estoque */
+        .stock-table th { @apply text-xs font-bold text-slate-500 uppercase tracking-wider py-2 px-3 border-b border-slate-100 bg-slate-50 text-left; }
+        .stock-table td { @apply text-sm text-slate-700 py-2 px-3 border-b border-slate-50; }
+        .stock-table tr:last-child td { @apply border-b-0; }
     </style>
 </head>
 <body>
@@ -127,7 +131,7 @@
             const [selectedTypeFilter, setSelectedTypeFilter] = useState("all"); 
             
             // Estados Estoque
-            const [stockFilter, setStockFilter] = useState("todos"); // 'todos', 'farmacia', 'mercado', 'hortifruti'
+            const [stockFilter, setStockFilter] = useState("farmacia"); // Default para Farmácia
 
             const [apiUrl] = useState(FIXED_API_URL);
             
@@ -142,7 +146,6 @@
                     const json = await response.json();
                     
                     if (json.status === 'sucesso') {
-                        // Suporte para versão antiga (só data) ou nova (financeiro + estoque)
                         const fData = json.financeiro || json.data || [];
                         const sData = json.estoque || [];
                         
@@ -192,7 +195,6 @@
                 const totalSaidasGeral = currentMonthData.filter(isSaida).reduce((acc, cur) => acc + cur.valor, 0);
                 const balance = totalEntradasCurrent - totalSaidasGeral;
 
-                // Gráfico Categorias
                 const catMap = {};
                 currentMonthData.filter(isSaida).forEach(d => {
                     catMap[d.categoriaMacro] = (catMap[d.categoriaMacro] || 0) + d.valor;
@@ -203,7 +205,6 @@
                     datasets: [{ data: sortedCats.map(c => c[1]), backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899'], borderWidth: 0 }]
                 };
 
-                // Gráfico Evolução
                 const evolMap = {};
                 financeData.forEach(d => {
                     const sortKey = d.ano * 100 + d.mesId; 
@@ -229,7 +230,6 @@
                     ]
                 };
 
-                // Tabela
                 let filteredTableData = currentMonthData;
                 if (selectedTypeFilter !== 'all') {
                     filteredTableData = currentMonthData.filter(d => {
@@ -260,51 +260,79 @@
                 };
             }, [financeData, selectedMonthKey, selectedTypeFilter]);
 
-            // --- ANÁLISE ESTOQUE (NOVO) ---
+            // --- ANÁLISE ESTOQUE ---
             const stockAnalysis = useMemo(() => {
                 if (!stockData || stockData.length === 0) return null;
 
-                // 1. Filtrar pelo tipo (Farmácia, Mercado, etc) - Normalização robusta com remoção de acentos
                 const normalize = (txt) => (txt || "").toString().toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
                 
                 let filtered = stockData;
-                if (stockFilter !== 'todos') {
-                    filtered = stockData.filter(item => normalize(item.estabelecimentoTipo).includes(stockFilter));
+                let title = "Todos";
+                let icon = <i data-lucide="shopping-cart"></i>;
+
+                if (stockFilter === 'mercado_hortifruti') {
+                    // Filtra por Mercado OU Hortifruti
+                    filtered = stockData.filter(item => {
+                        const type = normalize(item.estabelecimentoTipo);
+                        return type.includes('mercado') || type.includes('hortifruti') || type.includes('sacolao') || type.includes('acougue');
+                    });
+                    title = "Mercado & Hortifruti";
+                    icon = <span className="text-2xl flex gap-1"><span>🛒</span><span>🥬</span></span>;
+                } else if (stockFilter === 'farmacia') {
+                    filtered = stockData.filter(item => normalize(item.estabelecimentoTipo).includes('farmacia'));
+                    title = "Farmácia";
+                    icon = <span className="text-2xl">🏥</span>;
                 }
 
-                // 2. Contar meses distintos no dataset (para calcular a média)
                 const uniqueMonths = new Set(stockData.map(d => `${d.ano}-${d.mesId}`));
                 const numMonths = uniqueMonths.size || 1;
 
-                // 3. Agrupar por Item + Descrição
-                const groups = {};
+                // Agrupamento por Categoria E Item
+                const categories = {};
+
                 filtered.forEach(item => {
-                    const key = `${item.item} - ${item.descricao}`;
-                    if (!groups[key]) {
-                        groups[key] = {
+                    const catName = item.categoria || "Outros";
+                    if (!categories[catName]) categories[catName] = [];
+
+                    const normItem = (item.item || "").toString().trim().toLowerCase();
+                    const normDesc = (item.descricao || "").toString().trim().toLowerCase();
+                    const key = `${normItem}|${normDesc}`;
+
+                    let existing = categories[catName].find(i => i.key === key);
+                    if (!existing) {
+                        existing = {
+                            key,
                             name: item.item,
                             desc: item.descricao,
                             totalQtd: 0,
                             totalVal: 0,
                             count: 0
                         };
+                        categories[catName].push(existing);
                     }
-                    groups[key].totalQtd += item.qtd;
-                    groups[key].totalVal += item.valorTotal;
-                    groups[key].count += 1;
+                    existing.totalQtd += item.qtd;
+                    existing.totalVal += item.valorTotal;
+                    existing.count += 1;
                 });
 
-                // 4. Calcular Médias e Ordenar
-                const result = Object.values(groups).map(g => ({
-                    ...g,
-                    avgQtd: g.totalQtd / numMonths,
-                    avgVal: g.totalVal / numMonths,
-                    unitPriceAvg: g.totalVal / g.totalQtd
-                })).sort((a, b) => b.avgVal - a.avgVal); // Ordena por maior gasto médio
+                // Ordenar itens e categorias
+                Object.keys(categories).forEach(cat => {
+                    categories[cat] = categories[cat].map(g => ({
+                        ...g,
+                        avgQtd: g.totalQtd / numMonths,
+                        avgVal: g.totalVal / numMonths,
+                        unitPriceAvg: g.totalVal / g.totalQtd
+                    })).sort((a, b) => b.avgVal - a.avgVal);
+                });
+
+                const sortedCategories = Object.keys(categories).sort();
 
                 return {
-                    data: result,
-                    numMonths
+                    title,
+                    icon,
+                    numMonths,
+                    categories,
+                    sortedCategories
                 };
 
             }, [stockData, stockFilter]);
@@ -448,69 +476,71 @@
                             </div>
                         </section>
 
-                        {/* SEÇÃO 2: ANÁLISE DE CONSUMO (NOVO) */}
+                        {/* SEÇÃO 2: ANÁLISE DE CONSUMO (MINI TABELAS) */}
                         <section className="space-y-6 pt-8 border-t border-slate-200">
                             <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4">
                                 <div>
                                     <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                                        <i data-lucide="shopping-cart" className="w-6 h-6 text-accent"></i>
-                                        Análise de Consumo Médio
+                                        {stockAnalysis && stockAnalysis.icon}
+                                        {stockAnalysis ? stockAnalysis.title.toUpperCase() : "..."} 
+                                        <span className="text-slate-400 font-normal text-lg">— CONSUMO MÉDIO MENSAL</span>
                                     </h2>
-                                    <p className="text-slate-500 text-sm mt-1">Média baseada em {stockAnalysis ? stockAnalysis.numMonths : 0} meses de compras registradas.</p>
+                                    <p className="text-slate-500 text-sm mt-1">Média baseada em {stockAnalysis ? stockAnalysis.numMonths : 0} meses de registro.</p>
                                 </div>
                                 <div className="flex bg-white rounded-lg border border-slate-300 overflow-hidden p-1 gap-1">
-                                    {['todos', 'mercado', 'hortifruti', 'farmacia'].map(filter => (
+                                    {['farmacia', 'mercado_hortifruti'].map(filter => (
                                         <button 
                                             key={filter}
                                             onClick={() => setStockFilter(filter)}
                                             className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${stockFilter === filter ? 'bg-accent text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
                                         >
-                                            {filter === 'todos' ? 'Todos' : filter.charAt(0).toUpperCase() + filter.slice(1)}
+                                            {filter === 'farmacia' ? 'Farmácia' : 'Mercado & Hortifruti'}
                                         </button>
                                     ))}
                                 </div>
                             </div>
 
-                            <div className="card overflow-hidden">
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left text-sm text-slate-600">
-                                        <thead className="bg-slate-50 text-slate-700 uppercase font-bold text-xs">
-                                            <tr>
-                                                <th className="p-4 border-b">Item</th>
-                                                <th className="p-4 border-b">Descrição / Unidade</th>
-                                                <th className="p-4 border-b text-right">Preço Unit. Médio</th>
-                                                <th className="p-4 border-b text-right">Consumo Médio (Mês)</th>
-                                                <th className="p-4 border-b text-right">Gasto Médio (Mês)</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {stockAnalysis && stockAnalysis.data.length > 0 ? (
-                                                stockAnalysis.data.map((item, idx) => (
-                                                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                                                        <td className="p-4 font-bold text-slate-800">{item.name}</td>
-                                                        <td className="p-4">{item.desc}</td>
-                                                        <td className="p-4 text-right">
-                                                            {item.unitPriceAvg.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                                                        </td>
-                                                        <td className="p-4 text-right">
-                                                            <span className="font-bold text-slate-700">{item.avgQtd.toFixed(1).replace('.', ',')}</span> un
-                                                        </td>
-                                                        <td className="p-4 text-right font-bold text-accent">
-                                                            {item.avgVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                                                        </td>
-                                                    </tr>
-                                                ))
-                                            ) : (
-                                                <tr>
-                                                    <td colSpan="5" className="p-8 text-center text-slate-400 italic">
-                                                        Nenhum item encontrado no estoque para este filtro.
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </tbody>
-                                    </table>
+                            {stockAnalysis && stockAnalysis.sortedCategories.length > 0 ? (
+                                <div className="grid grid-cols-1 gap-6">
+                                    {stockAnalysis.sortedCategories.map(cat => (
+                                        <div key={cat} className="card p-0 overflow-hidden">
+                                            <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
+                                                <h3 className="font-bold text-slate-800 text-base">{cat}</h3>
+                                            </div>
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-left stock-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Item</th>
+                                                            <th>Descrição / Unidade</th>
+                                                            <th className="text-right">Consumo Médio</th>
+                                                            <th className="text-right">Custo Médio</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {stockAnalysis.categories[cat].map((item, idx) => (
+                                                            <tr key={idx} className="hover:bg-slate-50">
+                                                                <td className="font-medium">{item.name}</td>
+                                                                <td className="text-slate-500">{item.desc}</td>
+                                                                <td className="text-right font-bold text-slate-800">
+                                                                    {item.avgQtd.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} un/mês
+                                                                </td>
+                                                                <td className="text-right text-slate-500">
+                                                                    {item.avgVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="p-12 text-center text-slate-400 bg-white rounded-xl border border-slate-200">
+                                    Nenhum item encontrado para esta categoria.
+                                </div>
+                            )}
                         </section>
 
                     </main>
