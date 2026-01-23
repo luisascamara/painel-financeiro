@@ -49,7 +49,6 @@
         body { background-color: #f8fafc; }
         .card { @apply bg-white rounded-xl shadow-sm border border-slate-200 p-6; }
         select { background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e"); background-position: right 0.5rem center; background-repeat: no-repeat; background-size: 1.5em 1.5em; padding-right: 2.5rem; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        /* Estilo para o select claro (filtro da tabela) */
         .select-light { background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e"); }
     </style>
 </head>
@@ -97,7 +96,6 @@
         );
 
         const StatusBadge = ({ status }) => {
-            // Normalização robusta também na tabela
             const normalized = (status || "").toString().toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             const isPago = normalized === "pago";
             return (
@@ -117,32 +115,43 @@
 
         // --- MAIN APP ---
         const App = () => {
-            // URL ATUALIZADA
             const FIXED_API_URL = "https://script.google.com/macros/s/AKfycby3j0OHxghEhaN7OqmKhZ23T95vo_x0lGsRGqOEAEsSbbAQITABQBg0wpfff_Q13TABRw/exec";
 
-            const [data, setData] = useState([]);
+            const [financeData, setFinanceData] = useState([]);
+            const [stockData, setStockData] = useState([]);
             const [loading, setLoading] = useState(true);
             const [error, setError] = useState(null);
+            
+            // Estados Financeiro
             const [selectedMonthKey, setSelectedMonthKey] = useState(""); 
             const [selectedTypeFilter, setSelectedTypeFilter] = useState("all"); 
+            
+            // Estados Estoque
+            const [stockFilter, setStockFilter] = useState("todos"); // 'todos', 'farmacia', 'mercado', 'hortifruti'
+
             const [apiUrl] = useState(FIXED_API_URL);
             
             useEffect(() => { 
                 if (window.lucide) window.lucide.createIcons(); 
-            }, [loading, data, selectedMonthKey, selectedTypeFilter]);
+            }, [loading, financeData, selectedMonthKey, selectedTypeFilter, stockFilter]);
 
             const fetchData = async () => {
                 setLoading(true);
                 try {
                     const response = await fetch(`${apiUrl}?t=${new Date().getTime()}`);
-                    const contentType = response.headers.get("content-type");
-                    if (contentType && contentType.indexOf("application/json") === -1) { throw new Error("Erro de Permissão: Verifique se o script está como 'Qualquer pessoa'."); }
                     const json = await response.json();
+                    
                     if (json.status === 'sucesso') {
-                        setData(json.data);
+                        // Suporte para versão antiga (só data) ou nova (financeiro + estoque)
+                        const fData = json.financeiro || json.data || [];
+                        const sData = json.estoque || [];
+                        
+                        setFinanceData(fData);
+                        setStockData(sData);
                         setError(null);
-                        if (json.data && json.data.length > 0) {
-                            const sorted = [...json.data].sort((a, b) => (a.ano - b.ano) || (a.mesId - b.mesId));
+                        
+                        if (fData.length > 0) {
+                            const sorted = [...fData].sort((a, b) => (a.ano - b.ano) || (a.mesId - b.mesId));
                             const last = sorted[sorted.length - 1];
                             setSelectedMonthKey(`${last.ano}-${last.mesId}`);
                         }
@@ -157,65 +166,48 @@
 
             useEffect(() => { fetchData(); }, []);
 
+            // --- ANÁLISE FINANCEIRA ---
             const analysis = useMemo(() => {
-                if (!data || data.length === 0) return null;
+                if (!financeData || financeData.length === 0) return null;
 
-                // 1. Organizar Meses
                 const monthsMap = new Map();
-                data.forEach(item => {
+                financeData.forEach(item => {
                     const key = `${item.ano}-${item.mesId}`;
                     if (!monthsMap.has(key)) monthsMap.set(key, { key, label: `${item.mesNome}/${item.ano}`, ano: item.ano, mesId: item.mesId });
                 });
                 const availableMonths = Array.from(monthsMap.values()).sort((a, b) => (b.ano - a.ano) || (b.mesId - a.mesId));
 
-                // 2. Filtro Atual
                 const currentKey = selectedMonthKey || (availableMonths[0] ? availableMonths[0].key : "");
                 const [selAno, selMesId] = currentKey.split('-').map(Number);
-                
-                // Dados do Mês
-                const currentMonthData = data.filter(d => d.ano === selAno && d.mesId === selMesId);
+                const currentMonthData = financeData.filter(d => d.ano === selAno && d.mesId === selMesId);
 
-                // Helper de Normalização
                 const normalize = (text) => (text || "").toString().toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-                // 3. Totais (Separando Entrada vs Saída)
                 const isSaida = (d) => normalize(d.tipo).includes('saida');
                 const isEntrada = (d) => normalize(d.tipo).includes('entrada');
                 const isPago = (d) => normalize(d.status) === 'pago';
 
-                // Cálculo para o "Saldo em Caixa" (Entradas - Saídas PAGAS)
                 const totalEntradasCurrent = currentMonthData.filter(isEntrada).reduce((acc, cur) => acc + cur.valor, 0);
                 const totalSaidasPagas = currentMonthData.filter(d => isSaida(d) && isPago(d)).reduce((acc, cur) => acc + cur.valor, 0);
                 const saldoCaixa = totalEntradasCurrent - totalSaidasPagas;
-
-                // Total de Saídas (Geral, incluindo pendentes, para os outros cards)
                 const totalSaidasGeral = currentMonthData.filter(isSaida).reduce((acc, cur) => acc + cur.valor, 0);
-                
-                // Balanço Geral (Entradas - Saídas Totais)
                 const balance = totalEntradasCurrent - totalSaidasGeral;
 
-                // 4. Gráfico de Categorias (Saídas do Mês)
+                // Gráfico Categorias
                 const catMap = {};
                 currentMonthData.filter(isSaida).forEach(d => {
                     catMap[d.categoriaMacro] = (catMap[d.categoriaMacro] || 0) + d.valor;
                 });
                 const sortedCats = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
-                
                 const chartJsCategoryData = {
                     labels: sortedCats.map(c => c[0]),
-                    datasets: [{
-                        data: sortedCats.map(c => c[1]),
-                        backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899'],
-                        borderWidth: 0
-                    }]
+                    datasets: [{ data: sortedCats.map(c => c[1]), backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899'], borderWidth: 0 }]
                 };
 
-                // 5. Gráfico de Evolução
+                // Gráfico Evolução
                 const evolMap = {};
-                data.forEach(d => {
+                financeData.forEach(d => {
                     const sortKey = d.ano * 100 + d.mesId; 
                     if (!evolMap[sortKey]) evolMap[sortKey] = { name: `${d.mesNome}/${d.ano}`, saida: 0, entradaFamilia: 0, entradaMae: 0 };
-                    
                     if (isSaida(d)) {
                         evolMap[sortKey].saida += d.valor;
                     } else if (isEntrada(d)) {
@@ -228,34 +220,16 @@
                     }
                 });
                 const evolArray = Object.keys(evolMap).sort().map(k => evolMap[k]);
-
                 const chartJsEvolutionData = {
                     labels: evolArray.map(i => i.name),
                     datasets: [
-                        {
-                            label: 'Entrada (Lucinda)', 
-                            data: evolArray.map(i => i.entradaMae),
-                            backgroundColor: '#10b981', 
-                            stack: 'stack0',
-                        },
-                        {
-                            label: 'Entrada (Família)',
-                            data: evolArray.map(i => i.entradaFamilia),
-                            backgroundColor: '#34d399', 
-                            stack: 'stack0',
-                        },
-                        {
-                            label: 'Saídas Totais',
-                            data: evolArray.map(i => i.saida),
-                            backgroundColor: '#ef4444', 
-                            stack: 'stack1',
-                        }
+                        { label: 'Entrada (Lucinda)', data: evolArray.map(i => i.entradaMae), backgroundColor: '#10b981', stack: 'stack0' },
+                        { label: 'Entrada (Família)', data: evolArray.map(i => i.entradaFamilia), backgroundColor: '#34d399', stack: 'stack0' },
+                        { label: 'Saídas Totais', data: evolArray.map(i => i.saida), backgroundColor: '#ef4444', stack: 'stack1' }
                     ]
                 };
 
-                const toBRL = (val) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-                // 6. Dados da Tabela
+                // Tabela
                 let filteredTableData = currentMonthData;
                 if (selectedTypeFilter !== 'all') {
                     filteredTableData = currentMonthData.filter(d => {
@@ -264,6 +238,8 @@
                         return true;
                     });
                 }
+
+                const toBRL = (val) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
                 return {
                     availableMonths,
@@ -282,7 +258,58 @@
                         return new Date(dateA.split('/').reverse().join('-')) - new Date(dateB.split('/').reverse().join('-'));
                     })
                 };
-            }, [data, selectedMonthKey, selectedTypeFilter]);
+            }, [financeData, selectedMonthKey, selectedTypeFilter]);
+
+            // --- ANÁLISE ESTOQUE (NOVO) ---
+            const stockAnalysis = useMemo(() => {
+                if (!stockData || stockData.length === 0) return null;
+
+                // 1. Filtrar pelo tipo (Farmácia, Mercado, etc)
+                const normalize = (txt) => (txt || "").toLowerCase().trim();
+                let filtered = stockData;
+                if (stockFilter !== 'todos') {
+                    filtered = stockData.filter(item => normalize(item.estabelecimentoTipo).includes(stockFilter));
+                }
+
+                // 2. Contar meses distintos no dataset (para calcular a média)
+                // Ex: Se tem compras em Jan e Mar, são 2 meses ativos? Ou o range todo?
+                // Para consumo médio, o ideal é o range de meses onde houveram compras.
+                // Aqui vamos contar meses únicos que aparecem na lista de estoque.
+                const uniqueMonths = new Set(stockData.map(d => `${d.ano}-${d.mesId}`));
+                const numMonths = uniqueMonths.size || 1;
+
+                // 3. Agrupar por Item + Descrição
+                const groups = {};
+                filtered.forEach(item => {
+                    const key = `${item.item} - ${item.descricao}`;
+                    if (!groups[key]) {
+                        groups[key] = {
+                            name: item.item,
+                            desc: item.descricao,
+                            totalQtd: 0,
+                            totalVal: 0,
+                            count: 0
+                        };
+                    }
+                    groups[key].totalQtd += item.qtd;
+                    groups[key].totalVal += item.valorTotal;
+                    groups[key].count += 1;
+                });
+
+                // 4. Calcular Médias e Ordenar
+                const result = Object.values(groups).map(g => ({
+                    ...g,
+                    avgQtd: g.totalQtd / numMonths,
+                    avgVal: g.totalVal / numMonths,
+                    unitPriceAvg: g.totalVal / g.totalQtd
+                })).sort((a, b) => b.avgVal - a.avgVal); // Ordena por maior gasto médio
+
+                return {
+                    data: result,
+                    numMonths
+                };
+
+            }, [stockData, stockFilter]);
 
             if (loading) return <LoadingState />;
 
@@ -312,7 +339,7 @@
                                         <i data-lucide="layout-dashboard" className="w-6 h-6"></i>
                                         Relatório Financeiro
                                     </h1>
-                                    <p className="text-blue-100 text-sm opacity-90">Visão geral da conta</p>
+                                    <p className="text-blue-100 text-sm opacity-90">Visão geral da conta de Lucinda</p>
                                 </div>
                                 <div className="w-full md:w-auto relative">
                                     <select 
@@ -327,188 +354,166 @@
                         </div>
                     </header>
 
-                    <main className="max-w-7xl mx-auto px-4 md:px-8 py-8 space-y-8">
+                    <main className="max-w-7xl mx-auto px-4 md:px-8 py-8 space-y-12">
                         
-                        {/* KPI Cards */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                            <StatCard 
-                                title="Saídas (Gastos)" 
-                                value={analysis.totalSaidasCurrent} 
-                                icon={<i data-lucide="trending-down" className="w-6 h-6 text-red-500"></i>}
-                                subtext={`Em ${analysis.currentMonthLabel.split('/')[0]}`}
-                                type="danger"
-                            />
-                            <StatCard 
-                                title="Entradas (Total)" 
-                                value={analysis.totalEntradasCurrent} 
-                                icon={<i data-lucide="trending-up" className="w-6 h-6 text-green-500"></i>}
-                                subtext="Soma de Lucinda + Família"
-                                type="success"
-                            />
-                            <StatCard 
-                                title="Saldo Devedor" 
-                                value={analysis.balance} 
-                                icon={<i data-lucide="scale" className="w-6 h-6"></i>}
-                                subtext="Entradas - Todas Saídas"
-                                type={analysis.isPositive ? 'success' : 'danger'}
-                            />
-                            
-                            <StatCard 
-                                title="Saldo em Caixa" 
-                                value={analysis.saldoCaixa} 
-                                icon={<i data-lucide="wallet" className="w-6 h-6"></i>}
-                                subtext="Entradas - Saídas Pagas"
-                                type="warning"
-                            />
-                        </div>
-
-                        {/* Gráficos */}
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                            <div className="card h-[450px] flex flex-col lg:col-span-2">
-                                <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-                                    <i data-lucide="bar-chart-2" className="w-5 h-5 text-accent"></i> 
-                                    Entradas vs Saídas (Evolução)
-                                </h3>
-                                <div className="flex-1 w-full">
-                                    <ChartComponent 
-                                        type="bar" 
-                                        data={analysis.chartJsEvolutionData}
-                                        options={{
-                                            plugins: { 
-                                                legend: { position: 'top' },
-                                                tooltip: { 
-                                                    mode: 'index', 
-                                                    intersect: false,
-                                                    callbacks: { label: (c) => ` ${c.dataset.label}: R$ ${c.raw.toLocaleString('pt-BR')}` }
-                                                }
-                                            },
-                                            scales: {
-                                                y: { 
-                                                    beginAtZero: true, 
-                                                    stacked: true,
-                                                    ticks: { callback: (val) => 'R$ ' + val } 
-                                                },
-                                                x: { 
-                                                    stacked: true,
-                                                    grid: { display: false } 
-                                                }
-                                            },
-                                            interaction: { mode: 'nearest', axis: 'x', intersect: false }
-                                        }}
-                                    />
-                                </div>
-                                <p className="text-xs text-slate-400 mt-2 text-center">
-                                    * A barra da esquerda mostra as entradas (divisão Lucinda/Família). A barra da direita (vermelha) mostra o total de saídas.
-                                </p>
+                        {/* SEÇÃO 1: FINANCEIRO */}
+                        <section className="space-y-8">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <StatCard title="Saídas (Gastos)" value={analysis.totalSaidasCurrent} icon={<i data-lucide="trending-down" className="w-6 h-6 text-red-500"></i>} subtext={`Em ${analysis.currentMonthLabel.split('/')[0]}`} type="danger" />
+                                <StatCard title="Entradas (Total)" value={analysis.totalEntradasCurrent} icon={<i data-lucide="trending-up" className="w-6 h-6 text-green-500"></i>} subtext="Soma de Lucinda + Família" type="success" />
+                                <StatCard title="Saldo Geral" value={analysis.balance} icon={<i data-lucide="scale" className="w-6 h-6"></i>} subtext="Entradas - Todas Saídas" type={analysis.isPositive ? 'success' : 'danger'} />
+                                <StatCard title="Saldo em Caixa" value={analysis.saldoCaixa} icon={<i data-lucide="wallet" className="w-6 h-6"></i>} subtext="Entradas - Saídas Pagas" type="warning" />
                             </div>
-                            
-                            <div className="card h-[450px] flex flex-col">
-                                <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-                                    <i data-lucide="pie-chart" className="w-5 h-5 text-accent"></i> 
-                                    Gastos por Categoria
-                                </h3>
-                                <div className="flex-1 w-full">
-                                    {analysis.chartJsCategoryData.labels.length > 0 ? (
+
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                <div className="card h-[450px] flex flex-col lg:col-span-2">
+                                    <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                                        <i data-lucide="bar-chart-2" className="w-5 h-5 text-accent"></i> 
+                                        Entradas vs Saídas (Evolução)
+                                    </h3>
+                                    <div className="flex-1 w-full">
                                         <ChartComponent 
-                                            type="doughnut" 
-                                            data={analysis.chartJsCategoryData}
+                                            type="bar" 
+                                            data={analysis.chartJsEvolutionData}
                                             options={{
-                                                plugins: { 
-                                                    legend: { position: 'bottom' },
-                                                    tooltip: { 
-                                                        callbacks: { label: (c) => ` ${c.label}: R$ ${c.raw.toLocaleString('pt-BR')}` }
-                                                    }
-                                                },
-                                                cutout: '60%'
+                                                plugins: { legend: { position: 'top' }, tooltip: { mode: 'index', intersect: false, callbacks: { label: (c) => ` ${c.dataset.label}: R$ ${c.raw.toLocaleString('pt-BR')}` } } },
+                                                scales: { y: { beginAtZero: true, stacked: true, ticks: { callback: (val) => 'R$ ' + val } }, x: { stacked: true, grid: { display: false } } },
+                                                interaction: { mode: 'nearest', axis: 'x', intersect: false }
                                             }}
                                         />
-                                    ) : (
-                                        <div className="flex items-center justify-center h-full text-slate-400 bg-slate-50 rounded-lg">
-                                            Sem saídas neste mês
-                                        </div>
-                                    )}
+                                    </div>
                                 </div>
-                                <p className="text-xs text-slate-400 mt-2 text-center">
-                                    * Distribuição dos gastos (fixos vs variáveis) do mês selecionado.
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Tabela de Detalhes */}
-                        <div className="card overflow-hidden">
-                            <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
-                                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                    <i data-lucide="list" className="w-5 h-5 text-accent"></i> 
-                                    Detalhamento - {analysis.currentMonthLabel}
-                                </h3>
-                                
-                                <div className="w-full sm:w-auto relative">
-                                    <select 
-                                        value={selectedTypeFilter}
-                                        onChange={(e) => setSelectedTypeFilter(e.target.value)}
-                                        className="select-light w-full sm:w-48 appearance-none bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg py-2 pl-4 pr-10 focus:outline-none focus:ring-2 focus:ring-accent/50 cursor-pointer font-medium transition-colors"
-                                    >
-                                        <option value="all">Todas as Movimentações</option>
-                                        <option value="saida">Apenas Saídas (Gastos)</option>
-                                        <option value="entrada">Apenas Entradas</option>
-                                    </select>
+                                <div className="card h-[450px] flex flex-col">
+                                    <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                                        <i data-lucide="pie-chart" className="w-5 h-5 text-accent"></i> 
+                                        Gastos por Categoria
+                                    </h3>
+                                    <div className="flex-1 w-full">
+                                        {analysis.chartJsCategoryData.labels.length > 0 ? (
+                                            <ChartComponent 
+                                                type="doughnut" 
+                                                data={analysis.chartJsCategoryData}
+                                                options={{ plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { label: (c) => ` ${c.label}: R$ ${c.raw.toLocaleString('pt-BR')}` } } }, cutout: '60%' }}
+                                            />
+                                        ) : <div className="flex items-center justify-center h-full text-slate-400 bg-slate-50 rounded-lg">Sem saídas neste mês</div>}
+                                    </div>
                                 </div>
                             </div>
 
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left text-sm text-slate-600 border-collapse">
-                                    <thead className="bg-slate-50 text-slate-700 uppercase font-bold text-xs">
-                                        <tr>
-                                            <th className="p-4 border-b">Vencimento</th>
-                                            <th className="p-4 border-b">Tipo</th>
-                                            <th className="p-4 border-b">Categoria</th>
-                                            <th className="p-4 border-b">Descrição</th>
-                                            <th className="p-4 border-b text-right">Valor</th>
-                                            <th className="p-4 border-b text-center">Status</th>
-                                            <th className="p-4 border-b text-center">Comp.</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {analysis.tableData.length > 0 ? (
-                                            analysis.tableData.map((row, idx) => {
-                                                const isEntrada = row.tipo && row.tipo.toLowerCase().includes('entrada');
-                                                return (
+                            <div className="card overflow-hidden">
+                                <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+                                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                        <i data-lucide="list" className="w-5 h-5 text-accent"></i> 
+                                        Detalhamento - {analysis.currentMonthLabel}
+                                    </h3>
+                                    <div className="w-full sm:w-auto relative">
+                                        <select value={selectedTypeFilter} onChange={(e) => setSelectedTypeFilter(e.target.value)} className="select-light w-full sm:w-48 appearance-none bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg py-2 pl-4 pr-10 focus:outline-none focus:ring-2 focus:ring-accent/50 cursor-pointer font-medium transition-colors">
+                                            <option value="all">Todas as Movimentações</option>
+                                            <option value="saida">Apenas Saídas (Gastos)</option>
+                                            <option value="entrada">Apenas Entradas</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-sm text-slate-600 border-collapse">
+                                        <thead className="bg-slate-50 text-slate-700 uppercase font-bold text-xs">
+                                            <tr>
+                                                <th className="p-4 border-b">Vencimento</th>
+                                                <th className="p-4 border-b">Tipo</th>
+                                                <th className="p-4 border-b">Categoria</th>
+                                                <th className="p-4 border-b">Descrição</th>
+                                                <th className="p-4 border-b text-right">Valor</th>
+                                                <th className="p-4 border-b text-center">Status</th>
+                                                <th className="p-4 border-b text-center">Comp.</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {analysis.tableData.length > 0 ? (
+                                                analysis.tableData.map((row, idx) => {
+                                                    const isEntrada = row.tipo && row.tipo.toLowerCase().includes('entrada');
+                                                    return (
+                                                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                                                            <td className="p-4 font-medium text-slate-800">{row.dataVencimento || '-'}</td>
+                                                            <td className="p-4"><span className={`px-2 py-1 rounded text-xs font-bold border ${isEntrada ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>{row.tipo}</span></td>
+                                                            <td className="p-4">{row.categoriaMacro}</td>
+                                                            <td className="p-4 text-slate-900">{row.categoriaMicro}</td>
+                                                            <td className={`p-4 text-right font-bold ${isEntrada ? 'text-green-600' : 'text-red-600'}`}>{row.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                                                            <td className="p-4 text-center"><StatusBadge status={row.status} /></td>
+                                                            <td className="p-4 text-center">{row.linkComprovante ? (<a href={row.linkComprovante} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800"><i data-lucide="external-link" className="w-4 h-4 mx-auto"></i></a>) : <span className="text-slate-300">-</span>}</td>
+                                                        </tr>
+                                                    );
+                                                })
+                                            ) : <tr><td colspan="7" className="p-8 text-center text-slate-400 italic">Nenhuma movimentação encontrada.</td></tr>}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* SEÇÃO 2: ANÁLISE DE CONSUMO (NOVO) */}
+                        <section className="space-y-6 pt-8 border-t border-slate-200">
+                            <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4">
+                                <div>
+                                    <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                        <i data-lucide="shopping-cart" className="w-6 h-6 text-accent"></i>
+                                        Análise de Consumo Médio
+                                    </h2>
+                                    <p className="text-slate-500 text-sm mt-1">Média baseada em {stockAnalysis ? stockAnalysis.numMonths : 0} meses de compras registradas.</p>
+                                </div>
+                                <div className="flex bg-white rounded-lg border border-slate-300 overflow-hidden p-1 gap-1">
+                                    {['todos', 'mercado', 'hortifruti', 'farmacia'].map(filter => (
+                                        <button 
+                                            key={filter}
+                                            onClick={() => setStockFilter(filter)}
+                                            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${stockFilter === filter ? 'bg-accent text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+                                        >
+                                            {filter === 'todos' ? 'Todos' : filter.charAt(0).toUpperCase() + filter.slice(1)}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="card overflow-hidden">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-sm text-slate-600">
+                                        <thead className="bg-slate-50 text-slate-700 uppercase font-bold text-xs">
+                                            <tr>
+                                                <th className="p-4 border-b">Item</th>
+                                                <th className="p-4 border-b">Descrição / Unidade</th>
+                                                <th className="p-4 border-b text-right">Preço Unit. Médio</th>
+                                                <th className="p-4 border-b text-right">Consumo Médio (Mês)</th>
+                                                <th className="p-4 border-b text-right">Gasto Médio (Mês)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {stockAnalysis && stockAnalysis.data.length > 0 ? (
+                                                stockAnalysis.data.map((item, idx) => (
                                                     <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                                                        <td className="p-4 font-medium text-slate-800">{row.dataVencimento || '-'}</td>
-                                                        <td className="p-4">
-                                                            <span className={`px-2 py-1 rounded text-xs font-bold border ${isEntrada ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                                                                {row.tipo}
-                                                            </span>
+                                                        <td className="p-4 font-bold text-slate-800">{item.name}</td>
+                                                        <td className="p-4">{item.desc}</td>
+                                                        <td className="p-4 text-right">
+                                                            {item.unitPriceAvg.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                                                         </td>
-                                                        <td className="p-4">{row.categoriaMacro}</td>
-                                                        <td className="p-4 text-slate-900">{row.categoriaMicro}</td>
-                                                        <td className={`p-4 text-right font-bold ${isEntrada ? 'text-green-600' : 'text-red-600'}`}>
-                                                            {row.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                                        <td className="p-4 text-right">
+                                                            <span className="font-bold text-slate-700">{item.avgQtd.toFixed(1).replace('.', ',')}</span> un
                                                         </td>
-                                                        <td className="p-4 text-center">
-                                                            <StatusBadge status={row.status} />
-                                                        </td>
-                                                        <td className="p-4 text-center">
-                                                            {row.linkComprovante ? (
-                                                                <a href={row.linkComprovante} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
-                                                                    <i data-lucide="external-link" className="w-4 h-4 mx-auto"></i>
-                                                                </a>
-                                                            ) : <span className="text-slate-300">-</span>}
+                                                        <td className="p-4 text-right font-bold text-accent">
+                                                            {item.avgVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                                                         </td>
                                                     </tr>
-                                                );
-                                            })
-                                        ) : (
-                                            <tr>
-                                                <td colspan="7" className="p-8 text-center text-slate-400 italic">
-                                                    Nenhuma movimentação encontrada para este filtro.
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
+                                                ))
+                                            ) : (
+                                                <tr>
+                                                    <td colSpan="5" className="p-8 text-center text-slate-400 italic">
+                                                        Nenhum item encontrado no estoque para este filtro.
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
-                        </div>
+                        </section>
 
                     </main>
                 </div>
