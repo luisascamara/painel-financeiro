@@ -264,17 +264,15 @@
             const stockAnalysis = useMemo(() => {
                 if (!stockData || stockData.length === 0) return null;
 
-                // 1. Filtrar pelo tipo (Farmácia, Mercado, etc)
-                const normalize = (txt) => (txt || "").toLowerCase().trim();
+                // 1. Filtrar pelo tipo (Farmácia, Mercado, etc) - Normalização robusta com remoção de acentos
+                const normalize = (txt) => (txt || "").toString().toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                
                 let filtered = stockData;
                 if (stockFilter !== 'todos') {
                     filtered = stockData.filter(item => normalize(item.estabelecimentoTipo).includes(stockFilter));
                 }
 
                 // 2. Contar meses distintos no dataset (para calcular a média)
-                // Ex: Se tem compras em Jan e Mar, são 2 meses ativos? Ou o range todo?
-                // Para consumo médio, o ideal é o range de meses onde houveram compras.
-                // Aqui vamos contar meses únicos que aparecem na lista de estoque.
                 const uniqueMonths = new Set(stockData.map(d => `${d.ano}-${d.mesId}`));
                 const numMonths = uniqueMonths.size || 1;
 
