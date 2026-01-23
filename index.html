@@ -268,20 +268,17 @@
                 
                 let filtered = stockData;
                 let title = "Todos";
-                let icon = <i data-lucide="shopping-cart"></i>;
-
+                
+                // Definindo apenas o título textual para uso na lógica interna
                 if (stockFilter === 'mercado_hortifruti') {
-                    // Filtra por Mercado OU Hortifruti
                     filtered = stockData.filter(item => {
                         const type = normalize(item.estabelecimentoTipo);
                         return type.includes('mercado') || type.includes('hortifruti') || type.includes('sacolao') || type.includes('acougue');
                     });
                     title = "Mercado & Hortifruti";
-                    icon = <span className="text-2xl flex gap-1"><span>🛒</span><span>🥬</span></span>;
                 } else if (stockFilter === 'farmacia') {
                     filtered = stockData.filter(item => normalize(item.estabelecimentoTipo).includes('farmacia'));
                     title = "Farmácia";
-                    icon = <span className="text-2xl">🏥</span>;
                 }
 
                 const uniqueMonths = new Set(stockData.map(d => `${d.ano}-${d.mesId}`));
@@ -329,7 +326,6 @@
 
                 return {
                     title,
-                    icon,
                     numMonths,
                     categories,
                     sortedCategories
@@ -480,12 +476,17 @@
                         <section className="space-y-6 pt-8 border-t border-slate-200">
                             <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4">
                                 <div>
-                                    <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                                        {stockAnalysis && stockAnalysis.icon}
-                                        {stockAnalysis ? stockAnalysis.title.toUpperCase() : "..."} 
-                                        <span className="text-slate-400 font-normal text-lg">— CONSUMO MÉDIO MENSAL</span>
-                                    </h2>
-                                    <p className="text-slate-500 text-sm mt-1">Média baseada em {stockAnalysis ? stockAnalysis.numMonths : 0} meses de registro.</p>
+                                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                        <i data-lucide="shopping-cart" className="w-5 h-5 text-accent"></i>
+                                        Consumo Médio Mensal
+                                    </h3>
+                                    <p className="text-slate-500 text-sm mt-1 flex items-center gap-2">
+                                        <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-xs uppercase tracking-wide">
+                                            {stockAnalysis ? stockAnalysis.title : "..."}
+                                        </span>
+                                        <span>•</span>
+                                        <span>Média de {stockAnalysis ? stockAnalysis.numMonths : 0} meses</span>
+                                    </p>
                                 </div>
                                 <div className="flex bg-white rounded-lg border border-slate-300 overflow-hidden p-1 gap-1">
                                     {['farmacia', 'mercado_hortifruti'].map(filter => (
