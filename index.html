@@ -394,7 +394,7 @@
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                                 <StatCard title="Saídas (Gastos)" value={analysis.totalSaidasCurrent} icon={<i data-lucide="trending-down" className="w-6 h-6 text-red-500"></i>} subtext={`Em ${analysis.currentMonthLabel.split('/')[0]}`} type="danger" />
                                 <StatCard title="Entradas (Total)" value={analysis.totalEntradasCurrent} icon={<i data-lucide="trending-up" className="w-6 h-6 text-green-500"></i>} subtext="Soma de Lucinda + Família" type="success" />
-                                <StatCard title="Saldo Geral" value={analysis.balance} icon={<i data-lucide="scale" className="w-6 h-6"></i>} subtext="Entradas - Todas Saídas" type={analysis.isPositive ? 'success' : 'danger'} />
+                                <StatCard title="Saldo Devedor" value={analysis.balance} icon={<i data-lucide="scale" className="w-6 h-6"></i>} subtext="Entradas - Todas Saídas" type={analysis.isPositive ? 'success' : 'danger'} />
                                 <StatCard title="Saldo em Caixa" value={analysis.saldoCaixa} icon={<i data-lucide="wallet" className="w-6 h-6"></i>} subtext="Entradas - Saídas Pagas" type="warning" />
                             </div>
 
