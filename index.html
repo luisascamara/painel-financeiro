@@ -132,12 +132,13 @@
             
             // Estados Estoque
             const [stockFilter, setStockFilter] = useState("farmacia"); // Default para Farmácia
+            const [searchTerm, setSearchTerm] = useState(""); // Novo estado para busca
 
             const [apiUrl] = useState(FIXED_API_URL);
             
             useEffect(() => { 
                 if (window.lucide) window.lucide.createIcons(); 
-            }, [loading, financeData, selectedMonthKey, selectedTypeFilter, stockFilter]);
+            }, [loading, financeData, selectedMonthKey, selectedTypeFilter, stockFilter, searchTerm]);
 
             const fetchData = async () => {
                 setLoading(true);
@@ -269,7 +270,7 @@
                 let filtered = stockData;
                 let title = "Todos";
                 
-                // Definindo apenas o título textual para uso na lógica interna
+                // 1. Filtro por Tipo (Botões)
                 if (stockFilter === 'mercado_hortifruti') {
                     filtered = stockData.filter(item => {
                         const type = normalize(item.estabelecimentoTipo);
@@ -279,6 +280,16 @@
                 } else if (stockFilter === 'farmacia') {
                     filtered = stockData.filter(item => normalize(item.estabelecimentoTipo).includes('farmacia'));
                     title = "Farmácia";
+                }
+
+                // 2. Filtro por Busca (Novo)
+                if (searchTerm) {
+                    const term = normalize(searchTerm);
+                    filtered = filtered.filter(item => 
+                        normalize(item.item).includes(term) || 
+                        normalize(item.descricao).includes(term) ||
+                        normalize(item.categoria).includes(term)
+                    );
                 }
 
                 const uniqueMonths = new Set(stockData.map(d => `${d.ano}-${d.mesId}`));
@@ -331,7 +342,7 @@
                     sortedCategories
                 };
 
-            }, [stockData, stockFilter]);
+            }, [stockData, stockFilter, searchTerm]);
 
             if (loading) return <LoadingState />;
 
@@ -361,7 +372,7 @@
                                         <i data-lucide="layout-dashboard" className="w-6 h-6"></i>
                                         Relatório Financeiro
                                     </h1>
-                                    <p className="text-blue-100 text-sm opacity-90">Visão geral da conta</p>
+                                    <p className="text-blue-100 text-sm opacity-90">Visão geral da conta de Lucinda</p>
                                 </div>
                                 <div className="w-full md:w-auto relative">
                                     <select 
@@ -472,9 +483,10 @@
                             </div>
                         </section>
 
-                        {/* SEÇÃO 2: ANÁLISE DE CONSUMO (MINI TABELAS) */}
+                        {/* SEÇÃO 2: ANÁLISE DE CONSUMO (MINI TABELAS COM BUSCA E TÍTULO PADRÃO) */}
                         <section className="space-y-6 pt-8 border-t border-slate-200">
-                            <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4">
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                {/* Lado Esquerdo: Título e Subtítulo */}
                                 <div>
                                     <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                                         <i data-lucide="shopping-cart" className="w-5 h-5 text-accent"></i>
@@ -488,16 +500,33 @@
                                         <span>Média de {stockAnalysis ? stockAnalysis.numMonths : 0} meses</span>
                                     </p>
                                 </div>
-                                <div className="flex bg-white rounded-lg border border-slate-300 overflow-hidden p-1 gap-1">
-                                    {['farmacia', 'mercado_hortifruti'].map(filter => (
-                                        <button 
-                                            key={filter}
-                                            onClick={() => setStockFilter(filter)}
-                                            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${stockFilter === filter ? 'bg-accent text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
-                                        >
-                                            {filter === 'farmacia' ? 'Farmácia' : 'Mercado & Hortifruti'}
-                                        </button>
-                                    ))}
+                                
+                                {/* Lado Direito: Busca e Filtros */}
+                                <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                                    {/* Botões de Filtro (Esquerda) */}
+                                    <div className="flex bg-white rounded-lg border border-slate-300 overflow-hidden p-1 gap-1 w-full sm:w-auto">
+                                        {['farmacia', 'mercado_hortifruti'].map(filter => (
+                                            <button 
+                                                key={filter}
+                                                onClick={() => setStockFilter(filter)}
+                                                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex-1 sm:flex-none ${stockFilter === filter ? 'bg-accent text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+                                            >
+                                                {filter === 'farmacia' ? 'Farmácia' : 'Mercado & Hortifruti'}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* Campo de Busca (Direita) */}
+                                    <div className="relative w-full sm:w-64">
+                                        <i data-lucide="search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                                        <input 
+                                            type="text" 
+                                            placeholder="Buscar item..." 
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 bg-white"
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
@@ -539,7 +568,7 @@
                                 </div>
                             ) : (
                                 <div className="p-12 text-center text-slate-400 bg-white rounded-xl border border-slate-200">
-                                    Nenhum item encontrado para esta categoria.
+                                    {searchTerm ? `Nenhum item encontrado para "${searchTerm}".` : "Nenhum item encontrado para esta categoria."}
                                 </div>
                             )}
                         </section>
