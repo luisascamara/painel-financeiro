@@ -265,24 +265,31 @@
             const stockAnalysis = useMemo(() => {
                 if (!stockData || stockData.length === 0) return null;
 
+                // 1. FILTER BY SELECTED MONTH (CRITICAL FIX)
+                let currentMonthStock = stockData;
+                if (selectedMonthKey) {
+                    const [selAno, selMesId] = selectedMonthKey.split('-').map(Number);
+                    currentMonthStock = stockData.filter(d => d.ano === selAno && d.mesId === selMesId);
+                }
+
                 const normalize = (txt) => (txt || "").toString().toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
                 
-                let filtered = stockData;
+                let filtered = currentMonthStock;
                 let title = "Todos";
                 
-                // 1. Filtro por Tipo (Botões)
+                // 2. Filtro por Tipo (Botões)
                 if (stockFilter === 'mercado_hortifruti') {
-                    filtered = stockData.filter(item => {
+                    filtered = currentMonthStock.filter(item => {
                         const type = normalize(item.estabelecimentoTipo);
                         return type.includes('mercado') || type.includes('hortifruti') || type.includes('sacolao') || type.includes('acougue');
                     });
                     title = "Mercado & Hortifruti";
                 } else if (stockFilter === 'farmacia') {
-                    filtered = stockData.filter(item => normalize(item.estabelecimentoTipo).includes('farmacia'));
+                    filtered = currentMonthStock.filter(item => normalize(item.estabelecimentoTipo).includes('farmacia'));
                     title = "Farmácia";
                 }
 
-                // 2. Filtro por Busca (Novo)
+                // 3. Filtro por Busca (Novo)
                 if (searchTerm) {
                     const term = normalize(searchTerm);
                     filtered = filtered.filter(item => 
@@ -292,8 +299,10 @@
                     );
                 }
 
-                const uniqueMonths = new Set(stockData.map(d => `${d.ano}-${d.mesId}`));
-                const numMonths = uniqueMonths.size || 1;
+                // For monthly analysis, numMonths implies how many distinct months are in the dataset.
+                // Since we filter by ONE month, this will usually be 1.
+                // But we keep the logic just in case we switch back to multi-month.
+                const numMonths = 1; 
 
                 // Agrupamento por Categoria E Item
                 const categories = {};
@@ -342,7 +351,7 @@
                     sortedCategories
                 };
 
-            }, [stockData, stockFilter, searchTerm]);
+            }, [stockData, stockFilter, searchTerm, selectedMonthKey]); // Add selectedMonthKey dependency
 
             if (loading) return <LoadingState />;
 
@@ -483,9 +492,9 @@
                             </div>
                         </section>
 
-                        {/* SEÇÃO 2: ANÁLISE DE CONSUMO (MINI TABELAS COM BUSCA E TÍTULO PADRÃO) */}
+                        {/* SEÇÃO 2: ANÁLISE DE CONSUMO */}
                         <section className="space-y-6 pt-8 border-t border-slate-200">
-                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                                 {/* Lado Esquerdo: Título e Subtítulo */}
                                 <div>
                                     <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -497,13 +506,25 @@
                                             {stockAnalysis ? stockAnalysis.title : "..."}
                                         </span>
                                         <span>•</span>
-                                        <span>Média de {stockAnalysis ? stockAnalysis.numMonths : 0} meses</span>
+                                        <span>Referente ao mês selecionado</span>
                                     </p>
                                 </div>
                                 
                                 {/* Lado Direito: Busca e Filtros */}
-                                <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                                    {/* Botões de Filtro (Esquerda) */}
+                                <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                                    {/* Campo de Busca (Primeiro = Esquerda) */}
+                                    <div className="relative w-full sm:w-64">
+                                        <i data-lucide="search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                                        <input 
+                                            type="text" 
+                                            placeholder="Buscar item..." 
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 bg-white"
+                                        />
+                                    </div>
+
+                                    {/* Botões de Filtro (Segundo = Direita) */}
                                     <div className="flex bg-white rounded-lg border border-slate-300 overflow-hidden p-1 gap-1 w-full sm:w-auto">
                                         {['farmacia', 'mercado_hortifruti'].map(filter => (
                                             <button 
@@ -514,18 +535,6 @@
                                                 {filter === 'farmacia' ? 'Farmácia' : 'Mercado & Hortifruti'}
                                             </button>
                                         ))}
-                                    </div>
-
-                                    {/* Campo de Busca (Direita) */}
-                                    <div className="relative w-full sm:w-64">
-                                        <i data-lucide="search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
-                                        <input 
-                                            type="text" 
-                                            placeholder="Buscar item..." 
-                                            value={searchTerm}
-                                            onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 bg-white"
-                                        />
                                     </div>
                                 </div>
                             </div>
@@ -543,8 +552,8 @@
                                                         <tr>
                                                             <th>Item</th>
                                                             <th>Descrição / Unidade</th>
-                                                            <th className="text-right">Consumo Médio</th>
-                                                            <th className="text-right">Custo Médio</th>
+                                                            <th className="text-right">Consumo Mensal</th>
+                                                            <th className="text-right">Custo Mensal</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
@@ -553,7 +562,7 @@
                                                                 <td className="font-medium">{item.name}</td>
                                                                 <td className="text-slate-500">{item.desc}</td>
                                                                 <td className="text-right font-bold text-slate-800">
-                                                                    {item.avgQtd.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} un/mês
+                                                                    {item.avgQtd.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} un
                                                                 </td>
                                                                 <td className="text-right text-slate-500">
                                                                     {item.avgVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
@@ -568,7 +577,7 @@
                                 </div>
                             ) : (
                                 <div className="p-12 text-center text-slate-400 bg-white rounded-xl border border-slate-200">
-                                    {searchTerm ? `Nenhum item encontrado para "${searchTerm}".` : "Nenhum item encontrado para esta categoria."}
+                                    {searchTerm ? `Nenhum item encontrado para "${searchTerm}".` : "Nenhum item encontrado no estoque para este mês."}
                                 </div>
                             )}
                         </section>
